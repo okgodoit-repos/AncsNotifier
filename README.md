@@ -5,5 +5,6 @@ Show notifications from iOS ANCS on windows 10 using Bluetooth LE
 
 - Windows 10
 - Windows 10 SDK
+- LightBlue (On your phone)
 
-Note: Devices must be paired for this to work
+In `LightBlue` create a `Virtual Peripheral` in my case I choosed `Phone Alert Status` and pair your computer to this peripheral.

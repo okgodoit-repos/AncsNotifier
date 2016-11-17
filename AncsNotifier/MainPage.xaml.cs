@@ -22,6 +22,7 @@ using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth;
 using Windows.Data.Xml.Dom;
 using NotificationsExtensions;
+using Microsoft.QueryStringDotNET;
 
 // The Blank Page item template is documented at http://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -97,7 +98,40 @@ namespace AncsNotifier
             // toast actions
             ToastActionsCustom toastActions = new ToastActionsCustom();
 
-            toastActions.Buttons.Add(new ToastButtonDismiss());
+            switch (o.CategoryId)
+            {
+                case CategoryId.IncomingCall:
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
+                    toastActions.Buttons.Add(new ToastButton("Answer", new QueryString() {
+                        {"action", "answer"},
+                        {"uid", o.Uid.ToString() }
+                    }.ToString())
+                    {
+                        ActivationType = ToastActivationType.Foreground
+                    });
+
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
+                    toastActions.Buttons.Add(new ToastButton("Dismiss", new QueryString() {
+                        {"action", "dismiss"},
+                        {"uid", o.Uid.ToString() }
+                    }.ToString())
+                    {
+                        ActivationType = ToastActivationType.Foreground
+                    });
+
+                    break;
+                case CategoryId.MissedCall:
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
+                    toastActions.Buttons.Add(new ToastButtonDismiss());
+                    break;
+                case CategoryId.Email:
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Email.png" };
+                    toastActions.Buttons.Add(new ToastButtonDismiss());
+                    break;
+                default:
+                    toastActions.Buttons.Add(new ToastButtonDismiss());
+                    break;
+            }
 
             ToastContent toastContent = new ToastContent()
             {

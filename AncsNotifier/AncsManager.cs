@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.QueryStringDotNET;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -36,6 +37,9 @@ namespace AncsNotifier
 
         public Dictionary<uint, EventFlags> FlagCache = new Dictionary<uint, EventFlags>();
 
+        private CategoryId lastCategoryId;
+        private UInt32 lastNotificationUID;
+
         public AncsManager()
         {         
             OnUpdate = OnUpdateReceived;
@@ -69,7 +73,30 @@ namespace AncsNotifier
 
         private void OnUpdateReceived(IActivatedEventArgs activatedEventArgs)
         {
-            var b = 2;
+            // Handle toast activation
+            if (activatedEventArgs is ToastNotificationActivatedEventArgs)
+            {
+                var toastActivationArgs = activatedEventArgs as ToastNotificationActivatedEventArgs;
+
+                // Parse the query string
+                QueryString args = QueryString.Parse(toastActivationArgs.Argument);
+
+                var not = new PlainNotification()
+                {
+                    Uid = Convert.ToUInt32(args["uid"])
+                };
+
+                // See what action is being requested 
+                switch (args["action"])
+                {
+                    case "answer":
+                        OnAction(not, true);
+                        break;
+                    case "dismiss":
+                        OnAction(not, false);
+                        break;
+                }
+            }
         }
 
         public async Task<bool> Connect()
@@ -157,11 +184,9 @@ namespace AncsNotifier
             var notUid = br.ReadUInt32();
             var attr1 = (NotificationAttribute)br.ReadByte();
             var attr1len = br.ReadUInt16();
-            //var attr1val = br.ReadChars(attr1len);
             var attr1val = br.ReadBytes(attr1len);
             var attr2 = (NotificationAttribute) br.ReadByte();
             var attr2len = br.ReadUInt16();
-            //var attr2val = br.ReadChars(attr2len);
             var attr2val = br.ReadBytes(attr2len);
 
             EventFlags? flags = null;
@@ -171,12 +196,17 @@ namespace AncsNotifier
                 flags = FlagCache[notUid];
             }
 
+            var categoryId = CategoryId.Other;
+            if (lastNotificationUID == notUid)
+            {
+                categoryId = this.lastCategoryId;
+            }
+
             var not = new PlainNotification()
             {
+                CategoryId = categoryId,
                 EventFlags = flags,
                 Uid = notUid,
-                //Title = new string(attr1val),
-                //Message = new string(attr2val)
                 Title = Encoding.UTF8.GetString(attr1val),
                 Message = Encoding.UTF8.GetString(attr2val)
             };
@@ -197,6 +227,9 @@ namespace AncsNotifier
                 return;
             }
 
+            // Store the category and notification UID
+            this.lastCategoryId = dat.CategoryId;
+            this.lastNotificationUID = dat.NotificationUID;
 
             FlagCache[dat.NotificationUID] = dat.EventFlags;
 

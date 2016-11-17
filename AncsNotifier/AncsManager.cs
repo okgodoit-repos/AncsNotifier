@@ -34,7 +34,7 @@ namespace AncsNotifier
         public event Action<string> OnStatusChange;
         public static Action<IActivatedEventArgs> OnUpdate = args => {};
 
-        public Dictionary<uint, EventFlags> FlagCache = new Dictionary<uint, EventFlags>(); 
+        public Dictionary<uint, EventFlags> FlagCache = new Dictionary<uint, EventFlags>();
 
         public AncsManager()
         {         
@@ -84,17 +84,24 @@ namespace AncsNotifier
                 return false;
             }
 
-            this.AncsDevice = devices.First();
+            try
+            {
+                this.AncsDevice = devices.First();
 
-            //Resolve the service
-            this.AncsService = await GattDeviceService.FromIdAsync(this.AncsDevice.Id);
+                //Resolve the service
+                this.AncsService = await GattDeviceService.FromIdAsync(this.AncsDevice.Id);
 
-            this.AncsService.Device.ConnectionStatusChanged += DeviceOnConnectionStatusChanged;
+                this.AncsService.Device.ConnectionStatusChanged += DeviceOnConnectionStatusChanged;
 
-            //Get charasteristics of service
-            this.NotificationSourceCharacteristic = this.AncsService.GetCharacteristics(_notificationSourceCharacteristicUuid).First();
-            this.ControlPointCharacteristic = this.AncsService.GetCharacteristics(_controlPointCharacteristicUuid).First();
-            this.DataSourceCharacteristic = this.AncsService.GetCharacteristics(_dataSourceCharacteristicUuid).First();
+                //Get charasteristics of service
+                this.NotificationSourceCharacteristic = this.AncsService.GetCharacteristics(_notificationSourceCharacteristicUuid).First();
+                this.ControlPointCharacteristic = this.AncsService.GetCharacteristics(_controlPointCharacteristicUuid).First();
+                this.DataSourceCharacteristic = this.AncsService.GetCharacteristics(_dataSourceCharacteristicUuid).First();
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
 
             return true;
         }

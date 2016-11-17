@@ -20,6 +20,8 @@ using Windows.UI.Xaml.Navigation;
 using NotificationsExtensions.Toasts;
 using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth;
+using Windows.Data.Xml.Dom;
+using NotificationsExtensions;
 
 // The Blank Page item template is documented at http://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -73,29 +75,50 @@ namespace AncsNotifier
 
         private async void AncsManagerOnOnNotification(PlainNotification o)
         {
+            XmlDocument toastXml = null;
+
+            ToastVisual toastVisual = new ToastVisual()
+            {
+                BindingGeneric = new ToastBindingGeneric()
+                {
+                    Children = {
+                        new AdaptiveText()
+                        {
+                            Text = o.Title
+                        },
+                        new AdaptiveText
+                        {
+                            Text = o.Message
+                        }
+                    }
+                },
+            };
+
+            // toast actions
+            ToastActionsCustom toastActions = new ToastActionsCustom();
+
+            toastActions.Buttons.Add(new ToastButtonDismiss());
+
+            ToastContent toastContent = new ToastContent()
+            {
+                Visual = toastVisual,
+                Scenario = ToastScenario.Default,
+                Actions = toastActions,
+            };
+
+            toastXml = toastContent.GetXml();
+
+            ToastNotification toastNotification = new ToastNotification(toastXml)
+            {
+                ExpirationTime = DateTime.Now.AddMinutes(5)
+            };
+
+            ToastNotificationManager.CreateToastNotifier().Show(toastNotification);
+
+            // Old stuff
             await this.Dispatcher.RunAsync(CoreDispatcherPriority.Low, () =>
             {
                 this.DataList.Add(o);
-            });
-
-
-            Show(new ToastContent()
-            {
-                Visual = new ToastVisual()
-                {
-                    TitleText = new ToastText() { Text = o.Title },
-                    BodyTextLine1 = new ToastText() { Text = o.Message }
-                },
-
-                Scenario = ToastScenario.Default,
-
-                Actions = new ToastActionsCustom()
-                {
-                    Buttons =
-                    {
-                       new ToastButtonDismiss("Ok")
-                    }
-                }
             });
         }
 
@@ -106,20 +129,13 @@ namespace AncsNotifier
 
             try
             {
+                this.Advertiser.Stop();
                 this.Advertiser.Start();
             }
             catch (Exception ex)
             {
                 setStatus(ex.Message);
             }
-
-            //await Task.Delay(TimeSpan.FromSeconds(2));
-
-            //setStatus("Connecting...");
-
-            //this.AncsManager.Connect();
-
-            //setStatus("Waiting for device...");
         }
 
 
@@ -130,19 +146,6 @@ namespace AncsNotifier
             {
                 txtStatus.Text = status;
             });
-        }
-
-        private void Show(ToastContent content)
-        {
-            try
-            {
-                ToastNotificationManager.CreateToastNotifier().Show(new ToastNotification(content.GetXml()));
-
-            }
-            catch (Exception ex)
-            {
-                //yolo
-            }
         }
 
         private void ButtonPositive_OnClick(object sender, RoutedEventArgs e)
@@ -181,14 +184,24 @@ namespace AncsNotifier
                 {
                     case BluetoothLEAdvertisementPublisherStatus.Started:
                         setStatus("Connecting...");
-                        var connectionResult = await this.AncsManager.Connect();
-                        if (connectionResult == true)
+                        try
                         {
-                            setStatus("Waiting for device...");
+                            var connectionTask = this.AncsManager.Connect();
+                            var connectionResult = await connectionTask;
+
+                            //var connectionResult = await this.AncsManager.Connect();
+                            if (connectionResult == true)
+                            {
+                                setStatus("Waiting for device...");
+                            }
+                            else
+                            {
+                                setStatus("No suitable device");
+                            }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            setStatus("No suitable device");
+                            setStatus(ex.Message);
                         }
 
                         break;
@@ -199,7 +212,7 @@ namespace AncsNotifier
                 setStatus(String.Format("Error: {0}", error.ToString()));
             }
         }
-
+        
         private async void OnAncsManagerConnectionStatusChanged(BluetoothLEDevice device, object args)
         {
             switch (device.ConnectionStatus)

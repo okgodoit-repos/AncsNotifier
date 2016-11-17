@@ -157,10 +157,12 @@ namespace AncsNotifier
             var notUid = br.ReadUInt32();
             var attr1 = (NotificationAttribute)br.ReadByte();
             var attr1len = br.ReadUInt16();
-            var attr1val = br.ReadChars(attr1len);
+            //var attr1val = br.ReadChars(attr1len);
+            var attr1val = br.ReadBytes(attr1len);
             var attr2 = (NotificationAttribute) br.ReadByte();
             var attr2len = br.ReadUInt16();
-            var attr2val = br.ReadChars(attr2len);
+            //var attr2val = br.ReadChars(attr2len);
+            var attr2val = br.ReadBytes(attr2len);
 
             EventFlags? flags = null;
 
@@ -173,8 +175,10 @@ namespace AncsNotifier
             {
                 EventFlags = flags,
                 Uid = notUid,
-                Title = new string(attr1val),
-                Message = new string(attr2val)
+                //Title = new string(attr1val),
+                //Message = new string(attr2val)
+                Title = Encoding.UTF8.GetString(attr1val),
+                Message = Encoding.UTF8.GetString(attr2val)
             };
 
             OnNotification?.Invoke(not);

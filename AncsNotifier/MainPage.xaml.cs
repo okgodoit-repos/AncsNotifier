@@ -103,7 +103,7 @@ namespace AncsNotifier
                 case CategoryId.IncomingCall:
                     //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
                     toastActions.Buttons.Add(new ToastButton("Answer", new QueryString() {
-                        {"action", "answer"},
+                        {"action", "positive"},
                         {"uid", o.Uid.ToString() }
                     }.ToString())
                     {
@@ -112,7 +112,7 @@ namespace AncsNotifier
 
                     //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
                     toastActions.Buttons.Add(new ToastButton("Dismiss", new QueryString() {
-                        {"action", "dismiss"},
+                        {"action", "negative"},
                         {"uid", o.Uid.ToString() }
                     }.ToString())
                     {
@@ -122,6 +122,33 @@ namespace AncsNotifier
                     break;
                 case CategoryId.MissedCall:
                     //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
+                    toastActions.Buttons.Add(new ToastButton("Dial", new QueryString() {
+                        {"action", "positive"},
+                        {"uid", o.Uid.ToString() }
+                    }.ToString())
+                    {
+                        ActivationType = ToastActivationType.Foreground
+                    });
+
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
+                    toastActions.Buttons.Add(new ToastButton("Dismiss", new QueryString() {
+                        {"action", "negative"},
+                        {"uid", o.Uid.ToString() }
+                    }.ToString())
+                    {
+                        ActivationType = ToastActivationType.Foreground
+                    });
+                    break;
+                case CategoryId.Voicemail:
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
+                    toastActions.Buttons.Add(new ToastButton("Dial", new QueryString() {
+                        {"action", "positive"},
+                        {"uid", o.Uid.ToString() }
+                    }.ToString())
+                    {
+                        ActivationType = ToastActivationType.Foreground
+                    });
+
                     toastActions.Buttons.Add(new ToastButtonDismiss());
                     break;
                 case CategoryId.Email:

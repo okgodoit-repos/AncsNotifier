@@ -89,10 +89,10 @@ namespace AncsNotifier
                 // See what action is being requested 
                 switch (args["action"])
                 {
-                    case "answer":
+                    case "positive":
                         OnAction(not, true);
                         break;
-                    case "dismiss":
+                    case "negative":
                         OnAction(not, false);
                         break;
                 }

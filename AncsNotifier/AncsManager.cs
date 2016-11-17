@@ -29,6 +29,7 @@ namespace AncsNotifier
         public GattCharacteristic ControlPointCharacteristic { get; set; }
         public GattCharacteristic DataSourceCharacteristic { get; set; }
 
+        public event Windows.Foundation.TypedEventHandler<BluetoothLEDevice, Object> ConnectionStatusChanged;
         public event Action<PlainNotification> OnNotification;
         public event Action<string> OnStatusChange;
         public static Action<IActivatedEventArgs> OnUpdate = args => {};
@@ -71,11 +72,18 @@ namespace AncsNotifier
             var b = 2;
         }
 
-        public async void Connect()
+        public async Task<bool> Connect()
         {
             //Find a device that is advertising the ancs service uuid
             var serviceDeviceSelector = GattDeviceService.GetDeviceSelectorFromUuid(_ancsServiceUiid);
             var devices = await DeviceInformation.FindAllAsync(serviceDeviceSelector, null);
+
+            // sanity check
+            if (devices.Count == 0)
+            {
+                return false;
+            }
+
             this.AncsDevice = devices.First();
 
             //Resolve the service
@@ -87,17 +95,19 @@ namespace AncsNotifier
             this.NotificationSourceCharacteristic = this.AncsService.GetCharacteristics(_notificationSourceCharacteristicUuid).First();
             this.ControlPointCharacteristic = this.AncsService.GetCharacteristics(_controlPointCharacteristicUuid).First();
             this.DataSourceCharacteristic = this.AncsService.GetCharacteristics(_dataSourceCharacteristicUuid).First();
+
+            return true;
         }
 
         public BackgroundTaskRegistration BackgroundNotifierRegistration { get; set; }
 
         private async void DeviceOnConnectionStatusChanged(BluetoothLEDevice device, object args)
         {
+            ConnectionStatusChanged?.Invoke(device, args);
+
             if (device.ConnectionStatus == BluetoothConnectionStatus.Connected)
             {
                 //Get stuff up and running
-                OnStatusChange?.Invoke("Connected");           
-
                 if (
                     this.NotificationSourceCharacteristic.CharacteristicProperties.HasFlag(
                         GattCharacteristicProperties.Notify))
@@ -128,8 +138,6 @@ namespace AncsNotifier
                 //Stop doing stuff
                 this.DataSourceCharacteristic.ValueChanged -= DataSourceCharacteristicOnValueChanged;
                 this.NotificationSourceCharacteristic.ValueChanged -= NotificationSourceCharacteristicOnValueChanged;
-
-                OnStatusChange?.Invoke("Disconnected");
             }
         }
 

@@ -18,6 +18,8 @@ using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 using NotificationsExtensions.Toasts;
+using Windows.Devices.Bluetooth.Advertisement;
+using Windows.Devices.Bluetooth;
 
 // The Blank Page item template is documented at http://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -30,19 +32,22 @@ namespace AncsNotifier
     {
         public Advertiser Advertiser { get; set; }
         public AncsManager AncsManager { get; set; }
-        public ObservableCollection<PlainNotification> DataList = new ObservableCollection<PlainNotification>();    
+        public ObservableCollection<PlainNotification> DataList = new ObservableCollection<PlainNotification>();
 
         public MainPage()
         {
             this.InitializeComponent();
 
             listView.ItemsSource = DataList;
-         
-;           this.Advertiser = new Advertiser();
+
+            this.Advertiser = new Advertiser();
             this.AncsManager = new AncsManager();
 
-            this.AncsManager.OnNotification += AncsManagerOnOnNotification; 
+            this.Advertiser.StatusChanged += OnAdvertiserStatusChanged;
+
+            this.AncsManager.OnNotification += AncsManagerOnOnNotification;
             this.AncsManager.OnStatusChange += AncsManagerOnOnStatusChange;
+            this.AncsManager.ConnectionStatusChanged += OnAncsManagerConnectionStatusChanged;
         }
 
         private async void AncsManagerOnOnStatusChange(string s)
@@ -87,7 +92,7 @@ namespace AncsNotifier
                 Actions = new ToastActionsCustom()
                 {
                     Buttons =
-                    {               
+                    {
                        new ToastButtonDismiss("Ok")
                     }
                 }
@@ -99,21 +104,28 @@ namespace AncsNotifier
         {
             setStatus("Service solicitation...");
 
-            this.Advertiser.Advertise();
+            try
+            {
+                this.Advertiser.Start();
+            }
+            catch (Exception ex)
+            {
+                setStatus(ex.Message);
+            }
 
-            await Task.Delay(TimeSpan.FromSeconds(2));
+            //await Task.Delay(TimeSpan.FromSeconds(2));
 
-            setStatus("Connecting...");
+            //setStatus("Connecting...");
 
-            this.AncsManager.Connect();
+            //this.AncsManager.Connect();
 
-            setStatus("Waiting for device...");
+            //setStatus("Waiting for device...");
         }
 
-        
+
 
         private async void setStatus(string status)
-        {      
+        {
             await this.Dispatcher.RunAsync(CoreDispatcherPriority.Low, () =>
             {
                 txtStatus.Text = status;
@@ -125,7 +137,7 @@ namespace AncsNotifier
             try
             {
                 ToastNotificationManager.CreateToastNotifier().Show(new ToastNotification(content.GetXml()));
-              
+
             }
             catch (Exception ex)
             {
@@ -145,6 +157,63 @@ namespace AncsNotifier
             var not = (PlainNotification)((Button)sender).DataContext;
 
             this.AncsManager.OnAction(not, false);
+        }
+
+        /// <summary>
+        /// Invoked as an event handler when the status of the publisher changes.
+        /// </summary>
+        /// <param name="publisher">Instance of publisher that triggered the event.</param>
+        /// <param name="eventArgs">Event data containing information about the publisher status change event.</param>
+        private async void OnAdvertiserStatusChanged(
+            BluetoothLEAdvertisementPublisher publisher,
+            BluetoothLEAdvertisementPublisherStatusChangedEventArgs eventArgs)
+        {
+            // This event handler can be used to monitor the status of the publisher.
+            // We can catch errors if the publisher is aborted by the system
+            BluetoothLEAdvertisementPublisherStatus status = eventArgs.Status;
+            BluetoothError error = eventArgs.Error;
+
+            if (error == BluetoothError.Success)
+            {
+                setStatus(status.ToString());
+
+                switch (status)
+                {
+                    case BluetoothLEAdvertisementPublisherStatus.Started:
+                        setStatus("Connecting...");
+                        var connectionResult = await this.AncsManager.Connect();
+                        if (connectionResult == true)
+                        {
+                            setStatus("Waiting for device...");
+                        }
+                        else
+                        {
+                            setStatus("No suitable device");
+                        }
+
+                        break;
+                }
+            }
+            else
+            {
+                setStatus(String.Format("Error: {0}", error.ToString()));
+            }
+        }
+
+        private async void OnAncsManagerConnectionStatusChanged(BluetoothLEDevice device, object args)
+        {
+            switch (device.ConnectionStatus)
+            {
+                case BluetoothConnectionStatus.Connected:
+                    setStatus("Connected");
+                    break;
+                case BluetoothConnectionStatus.Disconnected:
+                    setStatus("Disconnected");
+                    break;
+                default:
+                    setStatus("Unknown");
+                    break;
+            }
         }
     }
 }

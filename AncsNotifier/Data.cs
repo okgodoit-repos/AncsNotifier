@@ -86,6 +86,7 @@ namespace AncsNotifier
 
     public class PlainNotification
     {
+        public CategoryId CategoryId;
         public string Title { get; set; }
         public string Message { get; set; }
         public uint Uid { get; set; }

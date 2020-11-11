@@ -18,6 +18,11 @@ using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 using NotificationsExtensions.Toasts;
+using Windows.Devices.Bluetooth.Advertisement;
+using Windows.Devices.Bluetooth;
+using Windows.Data.Xml.Dom;
+using NotificationsExtensions;
+using Microsoft.QueryStringDotNET;
 
 // The Blank Page item template is documented at http://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -30,19 +35,22 @@ namespace AncsNotifier
     {
         public Advertiser Advertiser { get; set; }
         public AncsManager AncsManager { get; set; }
-        public ObservableCollection<PlainNotification> DataList = new ObservableCollection<PlainNotification>();    
+        public ObservableCollection<PlainNotification> DataList = new ObservableCollection<PlainNotification>();
 
         public MainPage()
         {
             this.InitializeComponent();
 
             listView.ItemsSource = DataList;
-         
-;           this.Advertiser = new Advertiser();
+
+            this.Advertiser = new Advertiser();
             this.AncsManager = new AncsManager();
 
-            this.AncsManager.OnNotification += AncsManagerOnOnNotification; 
+            this.Advertiser.StatusChanged += OnAdvertiserStatusChanged;
+
+            this.AncsManager.OnNotification += AncsManagerOnOnNotification;
             this.AncsManager.OnStatusChange += AncsManagerOnOnStatusChange;
+            this.AncsManager.ConnectionStatusChanged += OnAncsManagerConnectionStatusChanged;
         }
 
         private async void AncsManagerOnOnStatusChange(string s)
@@ -68,29 +76,110 @@ namespace AncsNotifier
 
         private async void AncsManagerOnOnNotification(PlainNotification o)
         {
+            XmlDocument toastXml = null;
+
+            ToastVisual toastVisual = new ToastVisual()
+            {
+                BindingGeneric = new ToastBindingGeneric()
+                {
+                    Children = {
+                        new AdaptiveText()
+                        {
+                            Text = o.Title
+                        },
+                        new AdaptiveText
+                        {
+                            Text = o.Message
+                        }
+                    }
+                },
+            };
+
+            // toast actions
+            ToastActionsCustom toastActions = new ToastActionsCustom();
+
+            switch (o.CategoryId)
+            {
+                case CategoryId.IncomingCall:
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
+                    toastActions.Buttons.Add(new ToastButton("Answer", new QueryString() {
+                        {"action", "positive"},
+                        {"uid", o.Uid.ToString() }
+                    }.ToString())
+                    {
+                        ActivationType = ToastActivationType.Foreground
+                    });
+
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
+                    toastActions.Buttons.Add(new ToastButton("Dismiss", new QueryString() {
+                        {"action", "negative"},
+                        {"uid", o.Uid.ToString() }
+                    }.ToString())
+                    {
+                        ActivationType = ToastActivationType.Foreground
+                    });
+
+                    break;
+                case CategoryId.MissedCall:
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
+                    toastActions.Buttons.Add(new ToastButton("Dial", new QueryString() {
+                        {"action", "positive"},
+                        {"uid", o.Uid.ToString() }
+                    }.ToString())
+                    {
+                        ActivationType = ToastActivationType.Foreground
+                    });
+
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
+                    toastActions.Buttons.Add(new ToastButton("Dismiss", new QueryString() {
+                        {"action", "negative"},
+                        {"uid", o.Uid.ToString() }
+                    }.ToString())
+                    {
+                        ActivationType = ToastActivationType.Foreground
+                    });
+                    break;
+                case CategoryId.Voicemail:
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Phone.png" };
+                    toastActions.Buttons.Add(new ToastButton("Dial", new QueryString() {
+                        {"action", "positive"},
+                        {"uid", o.Uid.ToString() }
+                    }.ToString())
+                    {
+                        ActivationType = ToastActivationType.Foreground
+                    });
+
+                    toastActions.Buttons.Add(new ToastButtonDismiss());
+                    break;
+                case CategoryId.Email:
+                    //toastVisual.BindingGeneric.AppLogoOverride = new ToastGenericAppLogo() { Source = "Assets/iOS7_App_Icon_Email.png" };
+                    toastActions.Buttons.Add(new ToastButtonDismiss());
+                    break;
+                default:
+                    toastActions.Buttons.Add(new ToastButtonDismiss());
+                    break;
+            }
+
+            ToastContent toastContent = new ToastContent()
+            {
+                Visual = toastVisual,
+                Scenario = ToastScenario.Default,
+                Actions = toastActions,
+            };
+
+            toastXml = toastContent.GetXml();
+
+            ToastNotification toastNotification = new ToastNotification(toastXml)
+            {
+                ExpirationTime = DateTime.Now.AddMinutes(5)
+            };
+
+            ToastNotificationManager.CreateToastNotifier().Show(toastNotification);
+
+            // Old stuff
             await this.Dispatcher.RunAsync(CoreDispatcherPriority.Low, () =>
             {
                 this.DataList.Add(o);
-            });
-
-
-            Show(new ToastContent()
-            {
-                Visual = new ToastVisual()
-                {
-                    TitleText = new ToastText() { Text = o.Title },
-                    BodyTextLine1 = new ToastText() { Text = o.Message }
-                },
-
-                Scenario = ToastScenario.Default,
-
-                Actions = new ToastActionsCustom()
-                {
-                    Buttons =
-                    {               
-                       new ToastButtonDismiss("Ok")
-                    }
-                }
             });
         }
 
@@ -99,38 +188,25 @@ namespace AncsNotifier
         {
             setStatus("Service solicitation...");
 
-            this.Advertiser.Advertise();
-
-            await Task.Delay(TimeSpan.FromSeconds(2));
-
-            setStatus("Connecting...");
-
-            this.AncsManager.Connect();
-
-            setStatus("Waiting for device...");
+            try
+            {
+                this.Advertiser.Stop();
+                this.Advertiser.Start();
+            }
+            catch (Exception ex)
+            {
+                setStatus(ex.Message);
+            }
         }
 
-        
+
 
         private async void setStatus(string status)
-        {      
+        {
             await this.Dispatcher.RunAsync(CoreDispatcherPriority.Low, () =>
             {
                 txtStatus.Text = status;
             });
-        }
-
-        private void Show(ToastContent content)
-        {
-            try
-            {
-                ToastNotificationManager.CreateToastNotifier().Show(new ToastNotification(content.GetXml()));
-              
-            }
-            catch (Exception ex)
-            {
-                //yolo
-            }
         }
 
         private void ButtonPositive_OnClick(object sender, RoutedEventArgs e)
@@ -145,6 +221,73 @@ namespace AncsNotifier
             var not = (PlainNotification)((Button)sender).DataContext;
 
             this.AncsManager.OnAction(not, false);
+        }
+
+        /// <summary>
+        /// Invoked as an event handler when the status of the publisher changes.
+        /// </summary>
+        /// <param name="publisher">Instance of publisher that triggered the event.</param>
+        /// <param name="eventArgs">Event data containing information about the publisher status change event.</param>
+        private async void OnAdvertiserStatusChanged(
+            BluetoothLEAdvertisementPublisher publisher,
+            BluetoothLEAdvertisementPublisherStatusChangedEventArgs eventArgs)
+        {
+            // This event handler can be used to monitor the status of the publisher.
+            // We can catch errors if the publisher is aborted by the system
+            BluetoothLEAdvertisementPublisherStatus status = eventArgs.Status;
+            BluetoothError error = eventArgs.Error;
+
+            if (error == BluetoothError.Success)
+            {
+                setStatus(status.ToString());
+
+                switch (status)
+                {
+                    case BluetoothLEAdvertisementPublisherStatus.Started:
+                        setStatus("Connecting...");
+                        try
+                        {
+                            var connectionTask = this.AncsManager.Connect();
+                            var connectionResult = await connectionTask;
+
+                            //var connectionResult = await this.AncsManager.Connect();
+                            if (connectionResult == true)
+                            {
+                                setStatus("Waiting for device...");
+                            }
+                            else
+                            {
+                                setStatus("No suitable device");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            setStatus(ex.Message);
+                        }
+
+                        break;
+                }
+            }
+            else
+            {
+                setStatus(String.Format("Error: {0}", error.ToString()));
+            }
+        }
+        
+        private async void OnAncsManagerConnectionStatusChanged(BluetoothLEDevice device, object args)
+        {
+            switch (device.ConnectionStatus)
+            {
+                case BluetoothConnectionStatus.Connected:
+                    setStatus("Connected");
+                    break;
+                case BluetoothConnectionStatus.Disconnected:
+                    setStatus("Disconnected");
+                    break;
+                default:
+                    setStatus("Unknown");
+                    break;
+            }
         }
     }
 }

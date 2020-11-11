@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.QueryStringDotNET;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -29,11 +30,15 @@ namespace AncsNotifier
         public GattCharacteristic ControlPointCharacteristic { get; set; }
         public GattCharacteristic DataSourceCharacteristic { get; set; }
 
+        public event Windows.Foundation.TypedEventHandler<BluetoothLEDevice, Object> ConnectionStatusChanged;
         public event Action<PlainNotification> OnNotification;
         public event Action<string> OnStatusChange;
         public static Action<IActivatedEventArgs> OnUpdate = args => {};
 
-        public Dictionary<uint, EventFlags> FlagCache = new Dictionary<uint, EventFlags>(); 
+        public Dictionary<uint, EventFlags> FlagCache = new Dictionary<uint, EventFlags>();
+
+        private CategoryId lastCategoryId;
+        private UInt32 lastNotificationUID;
 
         public AncsManager()
         {         
@@ -68,36 +73,75 @@ namespace AncsNotifier
 
         private void OnUpdateReceived(IActivatedEventArgs activatedEventArgs)
         {
-            var b = 2;
+            // Handle toast activation
+            if (activatedEventArgs is ToastNotificationActivatedEventArgs)
+            {
+                var toastActivationArgs = activatedEventArgs as ToastNotificationActivatedEventArgs;
+
+                // Parse the query string
+                QueryString args = QueryString.Parse(toastActivationArgs.Argument);
+
+                var not = new PlainNotification()
+                {
+                    Uid = Convert.ToUInt32(args["uid"])
+                };
+
+                // See what action is being requested 
+                switch (args["action"])
+                {
+                    case "positive":
+                        OnAction(not, true);
+                        break;
+                    case "negative":
+                        OnAction(not, false);
+                        break;
+                }
+            }
         }
 
-        public async void Connect()
+        public async Task<bool> Connect()
         {
             //Find a device that is advertising the ancs service uuid
             var serviceDeviceSelector = GattDeviceService.GetDeviceSelectorFromUuid(_ancsServiceUiid);
             var devices = await DeviceInformation.FindAllAsync(serviceDeviceSelector, null);
-            this.AncsDevice = devices.First();
 
-            //Resolve the service
-            this.AncsService = await GattDeviceService.FromIdAsync(this.AncsDevice.Id);
+            // sanity check
+            if (devices.Count == 0)
+            {
+                return false;
+            }
 
-            this.AncsService.Device.ConnectionStatusChanged += DeviceOnConnectionStatusChanged;
+            try
+            {
+                this.AncsDevice = devices.First();
 
-            //Get charasteristics of service
-            this.NotificationSourceCharacteristic = this.AncsService.GetCharacteristics(_notificationSourceCharacteristicUuid).First();
-            this.ControlPointCharacteristic = this.AncsService.GetCharacteristics(_controlPointCharacteristicUuid).First();
-            this.DataSourceCharacteristic = this.AncsService.GetCharacteristics(_dataSourceCharacteristicUuid).First();
+                //Resolve the service
+                this.AncsService = await GattDeviceService.FromIdAsync(this.AncsDevice.Id);
+
+                this.AncsService.Device.ConnectionStatusChanged += DeviceOnConnectionStatusChanged;
+
+                //Get charasteristics of service
+                this.NotificationSourceCharacteristic = this.AncsService.GetCharacteristics(_notificationSourceCharacteristicUuid).First();
+                this.ControlPointCharacteristic = this.AncsService.GetCharacteristics(_controlPointCharacteristicUuid).First();
+                this.DataSourceCharacteristic = this.AncsService.GetCharacteristics(_dataSourceCharacteristicUuid).First();
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+
+            return true;
         }
 
         public BackgroundTaskRegistration BackgroundNotifierRegistration { get; set; }
 
         private async void DeviceOnConnectionStatusChanged(BluetoothLEDevice device, object args)
         {
+            ConnectionStatusChanged?.Invoke(device, args);
+
             if (device.ConnectionStatus == BluetoothConnectionStatus.Connected)
             {
                 //Get stuff up and running
-                OnStatusChange?.Invoke("Connected");           
-
                 if (
                     this.NotificationSourceCharacteristic.CharacteristicProperties.HasFlag(
                         GattCharacteristicProperties.Notify))
@@ -128,8 +172,6 @@ namespace AncsNotifier
                 //Stop doing stuff
                 this.DataSourceCharacteristic.ValueChanged -= DataSourceCharacteristicOnValueChanged;
                 this.NotificationSourceCharacteristic.ValueChanged -= NotificationSourceCharacteristicOnValueChanged;
-
-                OnStatusChange?.Invoke("Disconnected");
             }
         }
 
@@ -142,10 +184,10 @@ namespace AncsNotifier
             var notUid = br.ReadUInt32();
             var attr1 = (NotificationAttribute)br.ReadByte();
             var attr1len = br.ReadUInt16();
-            var attr1val = br.ReadChars(attr1len);
+            var attr1val = br.ReadBytes(attr1len);
             var attr2 = (NotificationAttribute) br.ReadByte();
             var attr2len = br.ReadUInt16();
-            var attr2val = br.ReadChars(attr2len);
+            var attr2val = br.ReadBytes(attr2len);
 
             EventFlags? flags = null;
 
@@ -154,12 +196,19 @@ namespace AncsNotifier
                 flags = FlagCache[notUid];
             }
 
+            var categoryId = CategoryId.Other;
+            if (lastNotificationUID == notUid)
+            {
+                categoryId = this.lastCategoryId;
+            }
+
             var not = new PlainNotification()
             {
+                CategoryId = categoryId,
                 EventFlags = flags,
                 Uid = notUid,
-                Title = new string(attr1val),
-                Message = new string(attr2val)
+                Title = Encoding.UTF8.GetString(attr1val),
+                Message = Encoding.UTF8.GetString(attr2val)
             };
 
             OnNotification?.Invoke(not);
@@ -178,6 +227,9 @@ namespace AncsNotifier
                 return;
             }
 
+            // Store the category and notification UID
+            this.lastCategoryId = dat.CategoryId;
+            this.lastNotificationUID = dat.NotificationUID;
 
             FlagCache[dat.NotificationUID] = dat.EventFlags;
 
